@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TextField, Button, Container, Typography, Box, Paper } from '@mui/material';
+import { TextField, Button, Container, Typography, Box, Paper, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { signup } from '../services/api';
 
@@ -28,7 +28,18 @@ const Signup: React.FC = () => {
         <Box component="form" sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth variant="outlined" />
           <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth variant="outlined" />
-          <TextField label="Subscription" value={subscription} onChange={(e) => setSubscription(e.target.value)} fullWidth variant="outlined" placeholder="Student, Vendor/Recruiter, Business" />
+          <FormControl fullWidth variant="outlined">
+            <InputLabel>Subscription</InputLabel>
+            <Select
+              value={subscription}
+              onChange={(e) => setSubscription(e.target.value)}
+              label="Subscription"
+            >
+              <MenuItem value="Student">Student</MenuItem>
+              <MenuItem value="Vendor">Vendor</MenuItem>
+              <MenuItem value="Business">Business</MenuItem>
+            </Select>
+          </FormControl>
           <TextField label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} fullWidth variant="outlined" />
           <Button variant="contained" onClick={handleSubmit} sx={{ bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}>
             Sign Up

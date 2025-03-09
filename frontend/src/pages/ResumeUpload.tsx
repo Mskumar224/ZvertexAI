@@ -9,6 +9,7 @@ const ResumeUpload: React.FC = () => {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [prompt, setPrompt] = useState('');
   const [resumePath, setResumePath] = useState('');
+  const [subscriptionPrompt, setSubscriptionPrompt] = useState(false); // New state for subscription prompt
   const token = localStorage.getItem('token') || '';
   const navigate = useNavigate();
 
@@ -16,8 +17,13 @@ const ResumeUpload: React.FC = () => {
     if (!file || !token) return alert('Please select a file and log in');
     try {
       const res = await uploadResume(file, token);
-      setResumePath(res.path);
-      setSuggestions(res.suggestions);
+      if (res.subscriptionRequired) {
+        setSubscriptionPrompt(true); // Show subscription prompt
+      } else {
+        setResumePath(res.path);
+        setSuggestions(res.suggestions);
+        setSubscriptionPrompt(false); // Reset prompt if successful
+      }
     } catch (error: any) {
       alert(`Upload failed: ${error.response?.data?.message || error.message}`);
     }
@@ -53,7 +59,16 @@ const ResumeUpload: React.FC = () => {
         <Button variant="contained" onClick={handleUpload} disabled={!file} sx={{ mb: 2, bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}>
           Upload
         </Button>
-        {suggestions.length > 0 && (
+        {subscriptionPrompt && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="h6" color="error">Resume limit reached (5).</Typography>
+            <Typography>Please upgrade your subscription for more uploads.</Typography>
+            <Button variant="contained" onClick={() => alert('Subscription upgrade not implemented yet')} sx={{ mt: 2, bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}>
+              Upgrade Subscription
+            </Button>
+          </Box>
+        )}
+        {suggestions.length > 0 && !subscriptionPrompt && (
           <Box sx={{ mt: 2 }}>
             <Typography variant="h6">Suggestions:</Typography>
             <List>
@@ -88,7 +103,7 @@ const ResumeUpload: React.FC = () => {
             )}
           </Box>
         )}
-        {resumePath && !suggestions.length && (
+        {resumePath && !suggestions.length && !subscriptionPrompt && (
           <Button variant="contained" onClick={() => navigate('/companies')} sx={{ mt: 2, bgcolor: 'primary.main', '&:hover': { bgcolor: 'primary.dark' } }}>
             Select Companies
           </Button>

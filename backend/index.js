@@ -40,8 +40,8 @@ const upload = multer({
 const userSchema = new mongoose.Schema({
   email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
-  subscription: { type: String, enum: ['Student', 'Vendor/Recruiter', 'Business'], required: true },
-  resumes: { type: Number, default: 1 },
+  subscription: { type: String, enum: ['Student', 'Vendor', 'Business'], required: true },
+  resumes: { type: Number, default: 5 }, // Changed default to 5
   jobsPerDay: { type: Number, default: 45 },
   recruiters: { type: Number, default: 1 },
   resumePaths: [String],
@@ -135,7 +135,7 @@ app.post('/api/signup', async (req, res) => {
       password: hashedPassword,
       subscription,
       phone,
-      resumes: subscription === 'Student' ? 1 : subscription === 'Vendor/Recruiter' ? 5 : 10,
+      resumes: 5, // Set to 5 for all new users
       jobsPerDay: subscription === 'Student' ? 45 : 35,
       recruiters: subscription === 'Business' ? 2 : 1,
     });
@@ -167,7 +167,12 @@ app.post('/api/upload-resume', upload, async (req, res) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findOne({ email: decoded.email });
-    if (user.resumePaths.length >= user.resumes) return res.status(403).json({ message: 'Resume limit reached' });
+    if (user.resumePaths.length >= 5) { // Check against fixed limit of 5
+      return res.status(403).json({ 
+        message: 'Resume limit reached (5). Upgrade your subscription for more uploads.',
+        subscriptionRequired: true 
+      });
+    }
     user.resumePaths.push(req.file.path);
     await user.save();
     const suggestions = scanResume(req.file.path);
