@@ -1,8 +1,6 @@
 body {
     margin: 0;
     font-family: 'Inter', sans-serif;
-    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-  }
-  .dark body {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    background-color: #1e1e1e !important;
+    color: #fff;
   }
