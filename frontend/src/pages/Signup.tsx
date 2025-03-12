@@ -13,7 +13,7 @@ const Signup: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5002/api/signup', { email, password, subscription, phone });
+      const res = await axios.post('https://zvertexai-orzv.onrender.com/api/signup', { email, password, subscription, phone });
       localStorage.setItem('token', res.data.token);
       navigate('/dashboard');
     } catch (error: any) {

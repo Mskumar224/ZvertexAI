@@ -9,12 +9,19 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const allowedOrigins = ['http://localhost:3000', 'https://zvertexai.netlify.app'];
-
+const cloudinary = require('cloudinary').v2;
 
 dotenv.config();
 
-const requiredEnv = ['PORT', 'MONGODB_URI', 'EMAIL_USER', 'EMAIL_PASS', 'JWT_SECRET', 'FRONTEND_URL', 'RAPIDAPI_KEY'];
+// Configure Cloudinary (replace with your actual credentials in .env)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Check required environment variables
+const requiredEnv = ['PORT', 'MONGODB_URI', 'EMAIL_USER', 'EMAIL_PASS', 'JWT_SECRET', 'FRONTEND_URL', 'RAPIDAPI_KEY', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
 requiredEnv.forEach((env) => {
   if (!process.env[env]) throw new Error(`Missing required env variable: ${env}`);
 });
@@ -29,7 +36,8 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const allowedOrigins = ['http://localhost:3000'];
+// CORS configuration (updated to include Netlify frontend)
+const allowedOrigins = ['http://localhost:3000', 'https://zvertexai.netlify.app'];
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
@@ -37,6 +45,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
+// MongoDB connection
 let dbConnected = false;
 mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => {
@@ -45,21 +54,10 @@ mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTop
   })
   .catch((err) => console.error('MongoDB connection failed:', err.message));
 
-if (fs.existsSync('./uploads') && !fs.statSync('./uploads').isDirectory()) {
-  fs.unlinkSync('./uploads');
-}
-fs.mkdirSync('./uploads', { recursive: true });
+// Multer configuration for memory storage (for Cloudinary)
+const upload = multer({ storage: multer.memoryStorage() }).single('resume');
 
-const storage = multer.diskStorage({
-  destination: './uploads/',
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, true),
-}).single('resume');
-
+// User schema
 const userSchema = new mongoose.Schema({
   email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
@@ -78,6 +76,7 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
+// Nodemailer setup
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
@@ -87,6 +86,7 @@ transporter.verify((error) => {
   else console.log('Nodemailer configured successfully');
 });
 
+// Utility functions
 const scanResume = (resumePath) => ['Add more technical skills', 'Update recent experience'];
 const updateResume = (resumePath, prompt) => resumePath;
 
@@ -177,6 +177,7 @@ const sendEmail = async (to, subject, html, attachments = []) => {
   }
 };
 
+// Email templates
 const getSignupEmail = (email, subscription) => `
   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
     <h2 style="color: #00C4B4;">Welcome to ZvertexAI, ${email}!</h2>
@@ -210,6 +211,7 @@ const getResetPasswordEmail = (email, resetLink) => `
   </div>
 `;
 
+// API routes
 app.get('/api/health', (req, res) => res.status(200).json({ message: 'Server is running', dbConnected }));
 
 app.post('/api/signup', async (req, res) => {
@@ -287,18 +289,27 @@ app.post('/api/reset-password', async (req, res) => {
   }
 });
 
+// Cloudinary-based resume upload endpoint
 app.post('/api/upload-resume', upload, async (req, res) => {
-  const { token, technology } = req.body;
   try {
     if (!dbConnected) throw new Error('Database not connected');
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { resource_type: 'raw' },
+        (error, result) => {
+          if (error) reject(new Error('Upload failed'));
+          resolve(result);
+        }
+      ).end(req.file.buffer);
+    });
+    const decoded = jwt.verify(req.body.token, process.env.JWT_SECRET);
     const user = await User.findOne({ email: decoded.email });
-    user.resumePaths.push(req.file.path);
-    if (technology) user.technology = technology;
+    user.resumePaths.push(result.secure_url);
+    if (req.body.technology) user.technology = req.body.technology;
     await user.save();
-    const suggestions = scanResume(req.file.path);
-    res.status(200).json({ message: 'Resume uploaded', path: req.file.path, suggestions });
+    const suggestions = scanResume(result.secure_url);
+    res.status(200).json({ message: 'Resume uploaded', path: result.secure_url, suggestions });
   } catch (error) {
     console.error('Upload error:', error.message);
     res.status(500).json({ message: 'Upload failed', error: error.message });
@@ -375,7 +386,7 @@ app.post('/api/auto-apply', async (req, res) => {
     await user.save();
 
     const resumePath = user.resumePaths[user.resumePaths.length - 1];
-    const attachments = [{ filename: path.basename(resumePath), path: resumePath }];
+    const attachments = [{ filename: 'resume.pdf', path: resumePath }]; // Note: path is a URL now
     await sendEmail(user.email, 'Auto-Apply Activated - ZvertexAI', getAutoApplyEmail(user.email, user.subscription, user.selectedCompanies), attachments);
 
     res.status(200).json({ message: 'Auto-apply process completed', appliedToday });
@@ -385,6 +396,7 @@ app.post('/api/auto-apply', async (req, res) => {
   }
 });
 
+// Start server
 const port = process.env.PORT || 5002;
 app.listen(port, () => console.log(`Server running on port ${port}`))
   .on('error', (err) => console.error('Server startup failed:', err.message));

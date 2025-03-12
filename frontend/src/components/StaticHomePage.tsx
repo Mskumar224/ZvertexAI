@@ -16,12 +16,12 @@ const StaticHomePage: React.FC = () => {
       if (token) {
         try {
           const decoded = JSON.parse(atob(token.split('.')[1]));
-          const res = await axios.post('http://localhost:5002/api/select-companies', {
+          const res = await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
             token,
             companies: JSON.parse(localStorage.getItem('selectedCompanies') || '[]'),
           });
           const today = new Date().toDateString();
-          const appliedToday = await axios.post('http://localhost:5002/api/auto-apply', { token });
+          const appliedToday = await axios.post('https://zvertexai-orzv.onrender.com/api/auto-apply', { token });
           setUserData({
             email: decoded.email,
             companies: JSON.parse(localStorage.getItem('selectedCompanies') || '[]'),
@@ -51,7 +51,7 @@ const StaticHomePage: React.FC = () => {
         formData.append('resume', file);
         formData.append('token', token);
         try {
-          await axios.post('http://localhost:5002/api/upload-resume', formData, {
+          await axios.post('https://zvertexai-orzv.onrender.com/api/upload-resume', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
           });
           navigate('/companies');
@@ -65,7 +65,7 @@ const StaticHomePage: React.FC = () => {
 
   const handleLogin = async () => {
     try {
-      const res = await axios.post('http://localhost:5002/api/login', { email, password });
+      const res = await axios.post('https://zvertexai-orzv.onrender.com/api/login', { email, password });
       localStorage.setItem('token', res.data.token);
       window.location.reload();
     } catch (error: any) {

@@ -17,7 +17,7 @@ const Companies: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:5002/api/select-companies', {
+      await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
         token: localStorage.getItem('token'),
         companies: selectedCompanies,
       });

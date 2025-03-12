@@ -16,11 +16,11 @@ const Dashboard: React.FC = () => {
       }
       try {
         const decoded = JSON.parse(atob(token.split('.')[1]));
-        const res = await axios.post('http://localhost:5002/api/select-companies', {
+        const res = await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
           token,
           companies: JSON.parse(localStorage.getItem('selectedCompanies') || '[]'),
         });
-        const appliedTodayRes = await axios.post('http://localhost:5002/api/auto-apply', { token });
+        const appliedTodayRes = await axios.post('https://zvertexai-orzv.onrender.com/api/auto-apply', { token });
         setUserData({
           email: decoded.email,
           subscription: decoded.subscription,

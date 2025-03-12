@@ -14,12 +14,12 @@ const ResetPassword: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5002/api/reset-password', {
+      const res = await axios.post('https://zvertexai-orzv.onrender.com/api/reset-password', {
         token,
         newPassword,
       });
       setMessage(res.data.message);
-      setTimeout(() => navigate('/login'), 2000); // Redirect after success
+      setTimeout(() => navigate('/login'), 2000);
     } catch (error: any) {
       setMessage(error.response?.data?.message || 'Failed to reset password');
     }

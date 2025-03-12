@@ -17,7 +17,7 @@ const ConfirmAutoApply: React.FC = () => {
         setLoading(true);
         const token = localStorage.getItem('token');
         const companies = JSON.parse(localStorage.getItem('selectedCompanies') || '[]');
-        const res = await axios.post('http://localhost:5002/api/select-companies', {
+        const res = await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
           token,
           companies,
         });
@@ -35,7 +35,7 @@ const ConfirmAutoApply: React.FC = () => {
   const handleConfirm = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post('http://localhost:5002/api/auto-apply', {
+      const res = await axios.post('https://zvertexai-orzv.onrender.com/api/auto-apply', {
         token,
         linkedinProfile: linkedinProfile || undefined,
         coverLetter: coverLetter || undefined,

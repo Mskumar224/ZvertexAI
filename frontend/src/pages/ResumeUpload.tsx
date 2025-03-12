@@ -22,7 +22,7 @@ const ResumeUpload: React.FC = () => {
     formData.append('token', localStorage.getItem('token') || '');
     formData.append('technology', technology);
     try {
-      const res = await axios.post('http://localhost:5002/api/upload-resume', formData, {
+      const res = await axios.post('https://zvertexai-orzv.onrender.com/api/upload-resume', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setSuggestions(res.data.suggestions);

@@ -11,7 +11,7 @@ const ForgotPassword: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await axios.post('http://localhost:5002/api/forgot-password', { email });
+      const res = await axios.post('https://zvertexai-orzv.onrender.com/api/forgot-password', { email });
       setMessage(res.data.message);
     } catch (error: any) {
       setMessage(error.response?.data?.message || 'Failed to send reset email');
