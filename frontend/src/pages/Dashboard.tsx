@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
   const [userData, setUserData] = useState<any>(null);
+  const [error, setError] = useState<string>('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -16,20 +17,39 @@ const Dashboard: React.FC = () => {
       }
       try {
         const decoded = JSON.parse(atob(token.split('.')[1]));
+        const companies = JSON.parse(localStorage.getItem('selectedCompanies') || '[]');
         const res = await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
           token,
-          companies: JSON.parse(localStorage.getItem('selectedCompanies') || '[]'),
+          companies,
         });
-        const appliedTodayRes = await axios.post('https://zvertexai-orzv.onrender.com/api/auto-apply', { token });
-        setUserData({
-          email: decoded.email,
-          subscription: decoded.subscription,
-          companies: JSON.parse(localStorage.getItem('selectedCompanies') || '[]'),
-          appliedToday: appliedTodayRes.data.appliedToday || 0,
-        });
-      } catch (error) {
+
+        // Only call auto-apply if prerequisites are met
+        if (companies.length > 0 && localStorage.getItem('resumeUploaded') === 'true') {
+          const appliedTodayRes = await axios.post('https://zvertexai-orzv.onrender.com/api/auto-apply', { token });
+          setUserData({
+            email: decoded.email,
+            subscription: decoded.subscription,
+            companies: companies,
+            appliedToday: appliedTodayRes.data.appliedToday || 0,
+          });
+        } else {
+          setUserData({
+            email: decoded.email,
+            subscription: decoded.subscription,
+            companies: companies,
+            appliedToday: 0,
+          });
+          setError('Please upload a resume and select companies to start auto-applying.');
+        }
+      } catch (error: any) {
         console.error('Fetch user data failed:', error);
-        navigate('/login');
+        if (error.response?.status === 400) {
+          setError(error.response.data.message || 'Setup incomplete. Please upload a resume and select companies.');
+          navigate('/resume-upload');
+        } else {
+          setError('Failed to load user data. Please try again.');
+          navigate('/login');
+        }
       }
     };
     fetchUserData();
@@ -54,6 +74,7 @@ const Dashboard: React.FC = () => {
       ) : (
         <Typography>Loading...</Typography>
       )}
+      {error && <Typography sx={{ mt: 2, color: '#dc3545' }}>{error}</Typography>}
       <Button variant="outlined" onClick={() => navigate(-1)} sx={{ mt: 2, px: 4, py: 1.5, borderColor: '#007bff', color: '#007bff' }}>Back</Button>
     </Container>
   );

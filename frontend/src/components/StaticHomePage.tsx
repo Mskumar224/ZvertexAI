@@ -8,32 +8,51 @@ const StaticHomePage: React.FC = () => {
   const [userData, setUserData] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState<string>('');
   const isAuthenticated = !!localStorage.getItem('token');
 
   useEffect(() => {
     const fetchUserData = async () => {
       const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const decoded = JSON.parse(atob(token.split('.')[1]));
-          const res = await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
-            token,
-            companies: JSON.parse(localStorage.getItem('selectedCompanies') || '[]'),
-          });
-          const today = new Date().toDateString();
+      if (!token) return;
+
+      try {
+        const decoded = JSON.parse(atob(token.split('.')[1]));
+        const companies = JSON.parse(localStorage.getItem('selectedCompanies') || '[]');
+        const res = await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
+          token,
+          companies,
+        });
+
+        // Only call auto-apply if prerequisites are met
+        const userRes = await axios.get('https://zvertexai-orzv.onrender.com/api/health'); // Placeholder to check DB connection
+        if (companies.length > 0 && localStorage.getItem('resumeUploaded') === 'true') {
           const appliedToday = await axios.post('https://zvertexai-orzv.onrender.com/api/auto-apply', { token });
           setUserData({
             email: decoded.email,
-            companies: JSON.parse(localStorage.getItem('selectedCompanies') || '[]'),
+            companies: companies,
             appliedToday: appliedToday.data.appliedToday || 0,
           });
-        } catch (error) {
-          console.error('Fetch user data failed:', error);
+        } else {
+          setUserData({
+            email: decoded.email,
+            companies: companies,
+            appliedToday: 0,
+          });
+          setError('Please upload a resume and select companies to start auto-applying.');
+        }
+      } catch (error: any) {
+        console.error('Fetch user data failed:', error);
+        if (error.response?.status === 400) {
+          setError(error.response.data.message || 'Setup incomplete. Please upload a resume and select companies.');
+          navigate('/resume-upload');
+        } else {
+          setError('Failed to load user data. Please try again.');
         }
       }
     };
     if (isAuthenticated) fetchUserData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, navigate]);
 
   const handleUpload = () => {
     const token = localStorage.getItem('token');
@@ -54,6 +73,7 @@ const StaticHomePage: React.FC = () => {
           await axios.post('https://zvertexai-orzv.onrender.com/api/upload-resume', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
           });
+          localStorage.setItem('resumeUploaded', 'true');
           navigate('/companies');
         } catch (error: any) {
           alert('Upload failed: ' + (error.response?.data?.message || error.message));
@@ -124,6 +144,7 @@ const StaticHomePage: React.FC = () => {
               ) : (
                 <Typography>Loading your data...</Typography>
               )}
+              {error && <Typography sx={{ mt: 2, color: '#dc3545' }}>{error}</Typography>}
             </>
           )}
         </Box>
