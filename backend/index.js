@@ -42,7 +42,7 @@ const allowedOrigins = [
   'https://zvertexai.netlify.app',
   'https://67d1e078ce70580008045c8d--zvertexai.netlify.app',
   'https://67d1e69e2d47412a5001c924--zvertexai.netlify.app',
-  'https://67d1e9046704b12e711ef0b1--zvertexai.netlify.app', // Added new Netlify URL
+  'https://67d1e9046704b12e711ef0b1--zvertexai.netlify.app',
 ];
 app.use(cors({
   origin: (origin, callback) => {
@@ -130,10 +130,12 @@ transporter.verify((error) => {
 });
 
 // Utility functions
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 const scanResume = (resumePath) => ['Add more technical skills', 'Update recent experience'];
 const updateResume = (resumePath, prompt) => resumePath;
 
-const fetchRealTimeJobs = async (companies, technology) => {
+const fetchRealTimeJobs = async (companies, technology, retries = 3) => {
   const jobs = {};
   const indeedOptions = {
     method: 'GET',
@@ -150,50 +152,62 @@ const fetchRealTimeJobs = async (companies, technology) => {
     },
   };
 
-  try {
-    const response = await axios.request(indeedOptions);
-    const allJobs = response.data.hits || [];
-    for (const company of companies) {
-      const companyJobs = allJobs
-        .filter(job => job.company_name.toLowerCase().includes(company.toLowerCase()))
-        .map(job => ({
-          id: job.job_id,
-          title: job.title,
-          posted: job.posted_time,
-          requiresDocs: job.description.includes('resume') || job.description.includes('cover letter'),
-          url: job.link || `https://www.indeed.com/viewjob?jk=${job.job_id}`,
-        }));
-      jobs[company] = companyJobs;
-    }
-    for (const company of companies) {
-      if (!jobs[company] || jobs[company].length === 0) {
-        console.log(`Fetching mock jobs for ${company}`);
-        jobs[company] = [
-          {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      console.log(`Fetching jobs for ${companies.length} companies at ${new Date().toISOString()} - Attempt ${attempt + 1}`);
+      const response = await axios.request(indeedOptions);
+      const allJobs = response.data.hits || [];
+      for (const company of companies) {
+        const companyJobs = allJobs
+          .filter(job => job.company_name.toLowerCase().includes(company.toLowerCase()))
+          .map(job => ({
+            id: job.job_id,
+            title: job.title,
+            posted: job.posted_time,
+            requiresDocs: job.description.includes('resume') || job.description.includes('cover letter'),
+            url: job.link || `https://www.indeed.com/viewjob?jk=${job.job_id}`,
+          }));
+        jobs[company] = companyJobs.length > 0 ? companyJobs : [];
+      }
+      // Fill in missing companies with mock data only if no real jobs found
+      for (const company of companies) {
+        if (!jobs[company] || jobs[company].length === 0) {
+          console.log(`No jobs found for ${company}, using mock data`);
+          jobs[company] = [{
             id: `${company}-mock-1`,
             title: `${company} - ${technology || 'Software'} Engineer`,
             posted: new Date().toISOString(),
             requiresDocs: true,
             url: `https://${company.toLowerCase()}.com/careers`,
-          },
-        ];
+          }];
+        }
+      }
+      return jobs; // Success, exit retry loop
+    } catch (error) {
+      console.error(`Indeed API attempt ${attempt + 1} failed:`, error.response?.status, error.message);
+      if (error.response?.status === 429) {
+        const retryAfter = error.response.headers['retry-after'] || (attempt + 1) * 5; // Default to 5s, 10s, 15s
+        console.log(`Rate limited (429), waiting ${retryAfter} seconds`);
+        await delay(retryAfter * 1000);
+      } else if (error.response?.status === 403) {
+        console.error('Forbidden (403): Check RAPIDAPI_KEY or Indeed API access');
+        break; // Exit on 403, no retry
+      } else if (attempt === retries - 1) {
+        console.error('Max retries reached, falling back to mock data');
+        for (const company of companies) {
+          jobs[company] = [{
+            id: `${company}-mock-1`,
+            title: `${company} - ${technology || 'Software'} Engineer`,
+            posted: new Date().toISOString(),
+            requiresDocs: true,
+            url: `https://${company.toLowerCase()}.com/careers`,
+          }];
+        }
+        return jobs;
       }
     }
-  } catch (error) {
-    console.error('Indeed API error:', error.message);
-    for (const company of companies) {
-      jobs[company] = [
-        {
-          id: `${company}-fallback-1`,
-          title: `${company} - ${technology || 'Software'} Engineer`,
-          posted: new Date().toISOString(),
-          requiresDocs: true,
-          url: `https://${company.toLowerCase()}.com/careers`,
-        },
-      ];
-    }
   }
-  return jobs;
+  return jobs; // Return whatever we have after retries
 };
 
 const autoApplyToJob = async (job, user) => {
@@ -362,11 +376,16 @@ app.post('/api/select-companies', async (req, res) => {
   const { token, companies } = req.body;
   try {
     if (!dbConnected) throw new Error('Database not connected');
+    if (!token || !companies) return res.status(400).json({ message: 'Missing token or companies' });
+    if (companies.length > 10) return res.status(400).json({ message: 'Maximum 10 companies allowed' });
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findOne({ email: decoded.email });
-    if (companies.length > 10) return res.status(400).json({ message: 'Maximum 10 companies allowed' });
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+
     user.selectedCompanies = companies;
     await user.save();
+
     const jobs = await fetchRealTimeJobs(companies, user.technology);
     res.status(200).json({ message: 'Companies selected', jobs });
   } catch (error) {
@@ -397,6 +416,7 @@ app.post('/api/auto-apply', async (req, res) => {
     if (!dbConnected) throw new Error('Database not connected');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findOne({ email: decoded.email });
+    if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
     if (!user.resumePaths.length || !user.selectedCompanies.length) {
       return res.status(400).json({ message: 'Upload resume and select companies first' });
@@ -419,11 +439,14 @@ app.post('/api/auto-apply', async (req, res) => {
       });
     }
 
+    let appliedCount = 0;
     for (const job of allJobs) {
       const success = await autoApplyToJob(job, user);
       if (success) {
         user.appliedJobs.push({ jobId: job.id, date: new Date() });
+        appliedCount++;
       }
+      await delay(1000); // 1-second delay between applications to avoid overwhelming downstream systems
     }
     await user.save();
 
@@ -431,7 +454,7 @@ app.post('/api/auto-apply', async (req, res) => {
     const attachments = [{ filename: 'resume.pdf', path: resumePath }];
     await sendEmail(user.email, 'Auto-Apply Activated - ZvertexAI', getAutoApplyEmail(user.email, user.subscription, user.selectedCompanies), attachments);
 
-    res.status(200).json({ message: 'Auto-apply process completed', appliedToday });
+    res.status(200).json({ message: 'Auto-apply process completed', appliedToday: appliedToday + appliedCount });
   } catch (error) {
     console.error('Auto-apply error:', error.message);
     res.status(500).json({ message: 'Auto-apply failed', error: error.message });
