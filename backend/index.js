@@ -13,7 +13,7 @@ const cloudinary = require('cloudinary').v2;
 
 dotenv.config();
 
-// Configure Cloudinary (replace with your actual credentials in .env)
+// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -36,14 +36,29 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS configuration (updated to include Netlify frontend)
-const allowedOrigins = ['http://localhost:3000', 'https://zvertexai.netlify.app'];
+// Updated CORS configuration
+const allowedOrigins = [
+  'http://localhost:3000', 
+  'https://zvertexai.netlify.app', 
+  'https://67d1e078ce70580008045c8d--zvertexai.netlify.app' // Add your current Netlify URL
+];
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g., mobile apps or curl) or if origin is in allowed list
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, origin);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
 }));
+
+// Explicitly handle OPTIONS preflight requests (optional, but ensures robustness)
+app.options('*', cors());
 
 // MongoDB connection
 let dbConnected = false;
@@ -86,7 +101,7 @@ transporter.verify((error) => {
   else console.log('Nodemailer configured successfully');
 });
 
-// Utility functions
+// Utility functions (unchanged)
 const scanResume = (resumePath) => ['Add more technical skills', 'Update recent experience'];
 const updateResume = (resumePath, prompt) => resumePath;
 
@@ -177,7 +192,7 @@ const sendEmail = async (to, subject, html, attachments = []) => {
   }
 };
 
-// Email templates
+// Email templates (unchanged)
 const getSignupEmail = (email, subscription) => `
   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
     <h2 style="color: #00C4B4;">Welcome to ZvertexAI, ${email}!</h2>
@@ -211,7 +226,7 @@ const getResetPasswordEmail = (email, resetLink) => `
   </div>
 `;
 
-// API routes
+// API routes (unchanged)
 app.get('/api/health', (req, res) => res.status(200).json({ message: 'Server is running', dbConnected }));
 
 app.post('/api/signup', async (req, res) => {
@@ -289,7 +304,6 @@ app.post('/api/reset-password', async (req, res) => {
   }
 });
 
-// Cloudinary-based resume upload endpoint
 app.post('/api/upload-resume', upload, async (req, res) => {
   try {
     if (!dbConnected) throw new Error('Database not connected');
@@ -386,7 +400,7 @@ app.post('/api/auto-apply', async (req, res) => {
     await user.save();
 
     const resumePath = user.resumePaths[user.resumePaths.length - 1];
-    const attachments = [{ filename: 'resume.pdf', path: resumePath }]; // Note: path is a URL now
+    const attachments = [{ filename: 'resume.pdf', path: resumePath }];
     await sendEmail(user.email, 'Auto-Apply Activated - ZvertexAI', getAutoApplyEmail(user.email, user.subscription, user.selectedCompanies), attachments);
 
     res.status(200).json({ message: 'Auto-apply process completed', appliedToday });
