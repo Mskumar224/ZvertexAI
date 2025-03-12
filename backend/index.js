@@ -40,8 +40,9 @@ app.use(express.urlencoded({ extended: true }));
 const allowedOrigins = [
   'http://localhost:3000',
   'https://zvertexai.netlify.app',
-  'https://67d1e078ce70580008045c8d--zvertexai.netlify.app', // Previous deploy URL
-  'https://67d1e69e2d47412a5001c924--zvertexai.netlify.app', // New deploy URL
+  'https://67d1e078ce70580008045c8d--zvertexai.netlify.app',
+  'https://67d1e69e2d47412a5001c924--zvertexai.netlify.app',
+  'https://67d1e9046704b12e711ef0b1--zvertexai.netlify.app', // Added new Netlify URL
 ];
 app.use(cors({
   origin: (origin, callback) => {
@@ -49,7 +50,7 @@ app.use(cors({
       callback(null, true);
     } else {
       console.log(`CORS rejected origin: ${origin}`);
-      callback(null, false); // Don't throw error, just deny gracefully
+      callback(null, false);
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -63,21 +64,38 @@ app.options('*', (req, res) => {
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   } else {
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Fallback for non-allowed origins
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.sendStatus(204);
 });
 
-// MongoDB connection
+// MongoDB connection with retry logic
 let dbConnected = false;
-mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => {
-    dbConnected = true;
-    console.log('Connected to MongoDB');
-  })
-  .catch((err) => console.error('MongoDB connection failed:', err.message));
+const connectToMongoDB = async () => {
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      await mongoose.connect(process.env.MONGODB_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
+      });
+      dbConnected = true;
+      console.log('Connected to MongoDB');
+      break;
+    } catch (err) {
+      console.error('MongoDB connection attempt failed:', err.message);
+      retries--;
+      if (retries === 0) {
+        console.error('MongoDB connection exhausted retries');
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
+    }
+  }
+};
+connectToMongoDB();
 
 // Multer configuration for memory storage (for Cloudinary)
 const upload = multer({ storage: multer.memoryStorage() }).single('resume');
@@ -111,7 +129,7 @@ transporter.verify((error) => {
   else console.log('Nodemailer configured successfully');
 });
 
-// Utility functions (unchanged)
+// Utility functions
 const scanResume = (resumePath) => ['Add more technical skills', 'Update recent experience'];
 const updateResume = (resumePath, prompt) => resumePath;
 
@@ -202,7 +220,7 @@ const sendEmail = async (to, subject, html, attachments = []) => {
   }
 };
 
-// Email templates (unchanged)
+// Email templates
 const getSignupEmail = (email, subscription) => `
   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
     <h2 style="color: #00C4B4;">Welcome to ZvertexAI, ${email}!</h2>
