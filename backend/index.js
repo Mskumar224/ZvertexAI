@@ -38,27 +38,32 @@ app.use(express.urlencoded({ extended: true }));
 
 // Updated CORS configuration
 const allowedOrigins = [
-  'http://localhost:3000', 
-  'https://zvertexai.netlify.app', 
-  'https://67d1e078ce70580008045c8d--zvertexai.netlify.app' // Add your current Netlify URL
+  'http://localhost:3000',
+  'https://zvertexai.netlify.app',
+  'https://67d1e078ce70580008045c8d--zvertexai.netlify.app', // Current Netlify deploy URL
 ];
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g., mobile apps or curl) or if origin is in allowed list
+    // Allow requests with no origin (e.g., curl) or if in allowedOrigins
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin);
+      callback(null, true);
     } else {
+      console.log(`CORS rejected origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  credentials: true,
 }));
 
-// Explicitly handle OPTIONS preflight requests (optional, but ensures robustness)
-app.options('*', cors());
+// Explicitly handle OPTIONS requests to ensure proper preflight response
+app.options('*', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(204); // No Content for preflight
+});
 
 // MongoDB connection
 let dbConnected = false;
@@ -226,7 +231,7 @@ const getResetPasswordEmail = (email, resetLink) => `
   </div>
 `;
 
-// API routes (unchanged)
+// API routes
 app.get('/api/health', (req, res) => res.status(200).json({ message: 'Server is running', dbConnected }));
 
 app.post('/api/signup', async (req, res) => {
