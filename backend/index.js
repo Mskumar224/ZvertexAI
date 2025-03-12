@@ -40,16 +40,16 @@ app.use(express.urlencoded({ extended: true }));
 const allowedOrigins = [
   'http://localhost:3000',
   'https://zvertexai.netlify.app',
-  'https://67d1e078ce70580008045c8d--zvertexai.netlify.app', // Current Netlify deploy URL
+  'https://67d1e078ce70580008045c8d--zvertexai.netlify.app', // Previous deploy URL
+  'https://67d1e69e2d47412a5001c924--zvertexai.netlify.app', // New deploy URL
 ];
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g., curl) or if in allowedOrigins
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.log(`CORS rejected origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+      callback(null, false); // Don't throw error, just deny gracefully
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -57,12 +57,17 @@ app.use(cors({
   credentials: true,
 }));
 
-// Explicitly handle OPTIONS requests to ensure proper preflight response
+// Explicitly handle OPTIONS requests
 app.options('*', (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Fallback for non-allowed origins
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.sendStatus(204); // No Content for preflight
+  res.sendStatus(204);
 });
 
 // MongoDB connection
