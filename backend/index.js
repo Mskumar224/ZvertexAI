@@ -11,6 +11,7 @@ const path = require('path');
 const axios = require('axios');
 const allowedOrigins = ['http://localhost:3000', 'https://zvertexai.netlify.app'];
 
+
 dotenv.config();
 
 const requiredEnv = ['PORT', 'MONGODB_URI', 'EMAIL_USER', 'EMAIL_PASS', 'JWT_SECRET', 'FRONTEND_URL', 'RAPIDAPI_KEY'];
