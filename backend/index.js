@@ -9,6 +9,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const allowedOrigins = ['http://localhost:3000', 'https://zvertexai.netlify.app'];
 
 dotenv.config();
 
