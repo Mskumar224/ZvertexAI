@@ -14,18 +14,25 @@ const StaticHomePage: React.FC = () => {
   useEffect(() => {
     const fetchUserData = async () => {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        setError('No session found. Please log in.');
+        return;
+      }
 
       try {
         const decoded = JSON.parse(atob(token.split('.')[1]));
+        const currentTime = Math.floor(Date.now() / 1000);
+        if (decoded.exp < currentTime) {
+          throw new Error('Token expired');
+        }
+
         const companies = JSON.parse(localStorage.getItem('selectedCompanies') || '[]');
         const res = await axios.post('https://zvertexai-orzv.onrender.com/api/select-companies', {
           token,
           companies,
         });
 
-        // Only call auto-apply if prerequisites are met
-        const userRes = await axios.get('https://zvertexai-orzv.onrender.com/api/health'); // Placeholder to check DB connection
+        const userRes = await axios.get('https://zvertexai-orzv.onrender.com/api/health');
         if (companies.length > 0 && localStorage.getItem('resumeUploaded') === 'true') {
           const appliedToday = await axios.post('https://zvertexai-orzv.onrender.com/api/auto-apply', { token });
           setUserData({
@@ -42,12 +49,23 @@ const StaticHomePage: React.FC = () => {
           setError('Please upload a resume and select companies to start auto-applying.');
         }
       } catch (error: any) {
-        console.error('Fetch user data failed:', error);
-        if (error.response?.status === 400) {
-          setError(error.response.data.message || 'Setup incomplete. Please upload a resume and select companies.');
+        const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+        const errorStatus = error.response?.status || 'No status';
+        console.error('Fetch user data failed:', { status: errorStatus, message: errorMessage, fullError: error });
+
+        if (errorMessage === 'Token expired' || errorStatus === 401) {
+          setError('Session expired. Please log in again.');
+          localStorage.removeItem('token');
+          localStorage.removeItem('resumeUploaded');
+          localStorage.removeItem('selectedCompanies');
+          navigate('/login');
+        } else if (errorStatus === 500) {
+          setError('Server error occurred. Please try again later.');
+        } else if (errorStatus === 400) {
+          setError(errorMessage || 'Setup incomplete. Please upload a resume and select companies.');
           navigate('/resume-upload');
         } else {
-          setError('Failed to load user data. Please try again.');
+          setError(`Network or unexpected error: ${errorMessage}`);
         }
       }
     };
@@ -62,7 +80,7 @@ const StaticHomePage: React.FC = () => {
     }
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '*/*';
+    input.accept = '/';
     input.onchange = async (e: any) => {
       const file = e.target.files[0];
       if (file) {
@@ -76,7 +94,15 @@ const StaticHomePage: React.FC = () => {
           localStorage.setItem('resumeUploaded', 'true');
           navigate('/companies');
         } catch (error: any) {
-          alert('Upload failed: ' + (error.response?.data?.message || error.message));
+          const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+          const errorStatus = error.response?.status || 'No status';
+          if (errorStatus === 401) {
+            setError('Session expired during upload. Please log in again.');
+            localStorage.removeItem('token');
+            navigate('/login');
+          } else {
+            alert(`Upload failed: ${errorMessage}`);
+          }
         }
       }
     };
@@ -89,8 +115,18 @@ const StaticHomePage: React.FC = () => {
       localStorage.setItem('token', res.data.token);
       window.location.reload();
     } catch (error: any) {
-      alert('Login failed: ' + (error.response?.data?.message || error.message));
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+      alert(`Login failed: ${errorMessage}`);
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('resumeUploaded');
+    localStorage.removeItem('selectedCompanies');
+    setUserData(null);
+    setError('');
+    navigate('/');
   };
 
   const handlePlanClick = () => {
@@ -98,25 +134,37 @@ const StaticHomePage: React.FC = () => {
   };
 
   return (
-    <Box className="twitter-layout">
-      <Box className="left-sidebar glass-card">
-        {!isAuthenticated ? (
-          <>
-            <Button onClick={() => navigate('/login')} sx={{ mb: 1, width: '100%' }}>Login</Button>
-            <Button onClick={() => navigate('/signup')} sx={{ mb: 1, width: '100%' }}>Signup</Button>
-          </>
-        ) : (
+    <Box className="twitter-layout" sx={{ display: 'flex', minHeight: '100vh' }}>
+      <Box className="left-sidebar glass-card" sx={{ width: '20%', p: 2 }}>
+        <Typography variant="h6" sx={{ mb: 2 }}>ZvertexAI</Typography>
+        {/* Always show Login and Signup, adjust disabled state */}
+        <Button
+          onClick={() => navigate('/login')}
+          disabled={isAuthenticated}
+          sx={{ mb: 1, width: '100%', bgcolor: isAuthenticated ? 'grey.300' : 'primary.main', color: isAuthenticated ? 'grey.600' : 'white' }}
+        >
+          Login
+        </Button>
+        <Button
+          onClick={() => navigate('/signup')}
+          disabled={!isAuthenticated}
+          sx={{ mb: 1, width: '100%', bgcolor: !isAuthenticated ? 'grey.300' : 'primary.main', color: !isAuthenticated ? 'grey.600' : 'white' }}
+        >
+          Signup
+        </Button>
+        {isAuthenticated && (
           <>
             <Button onClick={() => navigate('/resume-upload')} sx={{ mb: 1, width: '100%' }}>Update Resume</Button>
             <Button onClick={() => navigate('/companies')} sx={{ mb: 1, width: '100%' }}>Update Companies</Button>
             <Button onClick={() => navigate('/confirm-auto-apply')} sx={{ mb: 1, width: '100%' }}>Auto Apply</Button>
             <Button onClick={() => alert('Connect to LinkedIn - Coming Soon')} sx={{ mb: 1, width: '100%' }}>Connect to LinkedIn</Button>
             <Button onClick={() => alert('Latest Trending Jobs - Coming Soon')} sx={{ mb: 1, width: '100%' }}>Latest Trending Jobs</Button>
+            <Button onClick={handleLogout} sx={{ mb: 1, width: '100%', bgcolor: 'error.main', color: 'white' }}>Logout</Button>
           </>
         )}
       </Box>
-      <Box className="middle-content">
-        <Box className="glass-card" sx={{ textAlign: 'center' }}>
+      <Box className="middle-content" sx={{ flex: 1, p: 3 }}>
+        <Box className="glass-card" sx={{ textAlign: 'center', p: 4 }}>
           {!isAuthenticated ? (
             <>
               <Button onClick={() => navigate('/signup')} sx={{ fontSize: '18px', py: 2, px: 4, mb: 3 }}>Get Started</Button>
@@ -149,14 +197,34 @@ const StaticHomePage: React.FC = () => {
           )}
         </Box>
       </Box>
-      <Box className="right-sidebar glass-card">
+      <Box className="right-sidebar glass-card" sx={{ width: '20%', p: 2 }}>
         {!isAuthenticated ? (
           <>
-            <Typography variant="h6" sx={{ mb: 2 }}>New to ZvertexAI?</Typography>
-            <TextField label="Email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth sx={{ mb: 2 }} />
-            <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth sx={{ mb: 2 }} />
-            <Button onClick={handleLogin} sx={{ mb: 2 }}>Log In</Button>
-            <Button onClick={() => navigate('/signup')} sx={{ backgroundColor: '#28a745', color: '#fff' }}>Sign Up</Button>
+            <Typography variant="h6" sx={{ mb: 2 }}>New to ZvertexAI? Log In</Typography>
+            <TextField
+              label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <TextField
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+            <Button onClick={handleLogin} sx={{ mb: 2, width: '100%', bgcolor: 'primary.main', color: 'white' }}>
+              Log In
+            </Button>
+            <Button
+              onClick={() => navigate('/signup')}
+              sx={{ width: '100%', bgcolor: '#28a745', color: '#fff' }}
+            >
+              Sign Up
+            </Button>
           </>
         ) : (
           userData ? (

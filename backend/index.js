@@ -10,17 +10,21 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
+const pdfParse = require('pdf-parse'); // Added for PDF text extraction
 
 dotenv.config();
 
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+try {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+  console.log('Cloudinary configured successfully');
+} catch (error) {
+  console.error('Cloudinary configuration failed:', error.message);
+}
 
-// Check required environment variables
 const requiredEnv = ['PORT', 'MONGODB_URI', 'EMAIL_USER', 'EMAIL_PASS', 'JWT_SECRET', 'FRONTEND_URL', 'RAPIDAPI_KEY', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
 requiredEnv.forEach((env) => {
   if (!process.env[env]) throw new Error(`Missing required env variable: ${env}`);
@@ -36,7 +40,6 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Updated CORS configuration
 const allowedOrigins = [
   'http://localhost:3000',
   'https://zvertexai.netlify.app',
@@ -58,7 +61,6 @@ app.use(cors({
   credentials: true,
 }));
 
-// Explicitly handle OPTIONS requests
 app.options('*', (req, res) => {
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
@@ -71,7 +73,6 @@ app.options('*', (req, res) => {
   res.sendStatus(204);
 });
 
-// MongoDB connection with retry logic
 let dbConnected = false;
 const connectToMongoDB = async () => {
   let retries = 5;
@@ -82,25 +83,23 @@ const connectToMongoDB = async () => {
         useUnifiedTopology: true,
       });
       dbConnected = true;
-      console.log('Connected to MongoDB');
+      console.log('Connected to MongoDB successfully');
       break;
     } catch (err) {
-      console.error('MongoDB connection attempt failed:', err.message);
+      console.error(`MongoDB connection attempt failed (retries left: ${retries}):`, err.message, err.stack);
       retries--;
       if (retries === 0) {
-        console.error('MongoDB connection exhausted retries');
+        console.error('MongoDB connection exhausted retries.');
         break;
       }
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
 };
 connectToMongoDB();
 
-// Multer configuration for memory storage (for Cloudinary)
 const upload = multer({ storage: multer.memoryStorage() }).single('resume');
 
-// User schema
 const userSchema = new mongoose.Schema({
   email: { type: String, unique: true, required: true },
   password: { type: String, required: true },
@@ -116,10 +115,8 @@ const userSchema = new mongoose.Schema({
   coverLetter: String,
   technology: String,
 });
-
 const User = mongoose.model('User', userSchema);
 
-// Nodemailer setup
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
@@ -129,27 +126,30 @@ transporter.verify((error) => {
   else console.log('Nodemailer configured successfully');
 });
 
-// Utility functions
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 const scanResume = (resumePath) => ['Add more technical skills', 'Update recent experience'];
 const updateResume = (resumePath, prompt) => resumePath;
+
+const extractTechnologies = async (resumeBuffer) => {
+  try {
+    const data = await pdfParse(resumeBuffer);
+    const text = data.text.toLowerCase();
+    const techKeywords = ['javascript', 'python', 'java', 'react', 'node.js', 'sql', 'typescript', 'aws', 'docker', 'kotlin'];
+    const foundTech = techKeywords.filter(tech => text.includes(tech));
+    return foundTech.length > 0 ? foundTech.join(', ') : null;
+  } catch (error) {
+    console.error('Technology extraction failed:', error.message);
+    return null;
+  }
+};
 
 const fetchRealTimeJobs = async (companies, technology, retries = 3) => {
   const jobs = {};
   const indeedOptions = {
     method: 'GET',
     url: 'https://indeed12.p.rapidapi.com/jobs/search',
-    params: {
-      query: technology || 'software',
-      location: 'United States',
-      page: '1',
-      sort: 'date',
-    },
-    headers: {
-      'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
-      'X-RapidAPI-Host': 'indeed12.p.rapidapi.com',
-    },
+    params: { query: technology || 'software', location: 'United States', page: '1', sort: 'date' },
+    headers: { 'X-RapidAPI-Key': process.env.RAPIDAPI_KEY, 'X-RapidAPI-Host': 'indeed12.p.rapidapi.com' },
   };
 
   for (let attempt = 0; attempt < retries; attempt++) {
@@ -169,7 +169,6 @@ const fetchRealTimeJobs = async (companies, technology, retries = 3) => {
           }));
         jobs[company] = companyJobs.length > 0 ? companyJobs : [];
       }
-      // Fill in missing companies with mock data only if no real jobs found
       for (const company of companies) {
         if (!jobs[company] || jobs[company].length === 0) {
           console.log(`No jobs found for ${company}, using mock data`);
@@ -182,18 +181,18 @@ const fetchRealTimeJobs = async (companies, technology, retries = 3) => {
           }];
         }
       }
-      return jobs; // Success, exit retry loop
+      return jobs;
     } catch (error) {
       console.error(`Indeed API attempt ${attempt + 1} failed:`, error.response?.status, error.message);
       if (error.response?.status === 429) {
-        const retryAfter = error.response.headers['retry-after'] || (attempt + 1) * 5; // Default to 5s, 10s, 15s
+        const retryAfter = error.response.headers['retry-after'] || (attempt + 1) * 5;
         console.log(`Rate limited (429), waiting ${retryAfter} seconds`);
         await delay(retryAfter * 1000);
       } else if (error.response?.status === 403) {
-        console.error('Forbidden (403): Check RAPIDAPI_KEY or Indeed API access');
-        break; // Exit on 403, no retry
+        console.error('Forbidden (403): Check RAPIDAPI_KEY');
+        break;
       } else if (attempt === retries - 1) {
-        console.error('Max retries reached, falling back to mock data');
+        console.error('Max retries reached, using mock data');
         for (const company of companies) {
           jobs[company] = [{
             id: `${company}-mock-1`,
@@ -207,7 +206,7 @@ const fetchRealTimeJobs = async (companies, technology, retries = 3) => {
       }
     }
   }
-  return jobs; // Return whatever we have after retries
+  return jobs;
 };
 
 const autoApplyToJob = async (job, user) => {
@@ -216,7 +215,7 @@ const autoApplyToJob = async (job, user) => {
   if (job.requiresDocs) {
     console.log(`Using LinkedIn: ${user.linkedinProfile}, Cover Letter: ${user.coverLetter}`);
   }
-  return true; // Simulated success
+  return true;
 };
 
 const sendEmail = async (to, subject, html, attachments = []) => {
@@ -234,7 +233,6 @@ const sendEmail = async (to, subject, html, attachments = []) => {
   }
 };
 
-// Email templates
 const getSignupEmail = (email, subscription) => `
   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
     <h2 style="color: #00C4B4;">Welcome to ZvertexAI, ${email}!</h2>
@@ -242,8 +240,7 @@ const getSignupEmail = (email, subscription) => `
     <p>Get started by uploading your resume and selecting companies to auto-apply to!</p>
     <a href="${process.env.FRONTEND_URL}/dashboard" style="background-color: #00C4B4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Go to Dashboard</a>
     <p>Best regards,<br>The ZvertexAI Team</p>
-  </div>
-`;
+  </div>`;
 
 const getAutoApplyEmail = (email, subscription, companies) => `
   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
@@ -254,8 +251,7 @@ const getAutoApplyEmail = (email, subscription, companies) => `
     <p>We'll apply your resume to relevant jobs daily. Track your applications in the dashboard.</p>
     <a href="${process.env.FRONTEND_URL}/dashboard" style="background-color: #00C4B4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dashboard</a>
     <p>Best regards,<br>The ZvertexAI Team</p>
-  </div>
-`;
+  </div>`;
 
 const getResetPasswordEmail = (email, resetLink) => `
   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
@@ -265,10 +261,8 @@ const getResetPasswordEmail = (email, resetLink) => `
     <a href="${resetLink}" style="background-color: #00C4B4; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a>
     <p>This link expires in 1 hour. If you didn’t request this, ignore this email.</p>
     <p>Best regards,<br>The ZvertexAI Team</p>
-  </div>
-`;
+  </div>`;
 
-// API routes
 app.get('/api/health', (req, res) => res.status(200).json({ message: 'Server is running', dbConnected }));
 
 app.post('/api/signup', async (req, res) => {
@@ -281,11 +275,11 @@ app.post('/api/signup', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ email, password: hashedPassword, subscription, phone });
     await user.save();
-    const token = jwt.sign({ email, subscription }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ email, subscription }, process.env.JWT_SECRET, { expiresIn: '24h' });
     await sendEmail(email, 'Welcome to ZvertexAI', getSignupEmail(email, subscription));
     res.status(201).json({ token, message: 'Signup successful' });
   } catch (error) {
-    console.error('Signup error:', error.message, error.stack);
+    console.error('Signup error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Signup failed', error: error.message });
   }
 });
@@ -299,10 +293,10 @@ app.post('/api/login', async (req, res) => {
     if (!user || !(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
-    const token = jwt.sign({ email, subscription: user.subscription }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ email, subscription: user.subscription }, process.env.JWT_SECRET, { expiresIn: '24h' });
     res.status(200).json({ token, message: 'Login successful' });
   } catch (error) {
-    console.error('Login error:', error.message, error.stack);
+    console.error('Login error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Login failed', error: error.message });
   }
 });
@@ -321,7 +315,7 @@ app.post('/api/forgot-password', async (req, res) => {
     await sendEmail(email, 'Reset Your Password - ZvertexAI', getResetPasswordEmail(email, resetLink));
     res.status(200).json({ message: 'Password reset email sent' });
   } catch (error) {
-    console.error('Forgot password error:', error.message);
+    console.error('Forgot password error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Failed to process request', error: error.message });
   }
 });
@@ -341,33 +335,62 @@ app.post('/api/reset-password', async (req, res) => {
     await user.save();
     res.status(200).json({ message: 'Password reset successful' });
   } catch (error) {
-    console.error('Reset password error:', error.message);
+    console.error('Reset password error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Failed to reset password', error: error.message });
   }
 });
 
 app.post('/api/upload-resume', upload, async (req, res) => {
   try {
-    if (!dbConnected) throw new Error('Database not connected');
+    if (!dbConnected) return res.status(503).json({ message: 'Service unavailable: Database not connected' });
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
-        { resource_type: 'raw' },
-        (error, result) => {
-          if (error) reject(new Error('Upload failed'));
-          resolve(result);
-        }
-      ).end(req.file.buffer);
-    });
-    const decoded = jwt.verify(req.body.token, process.env.JWT_SECRET);
+    if (!req.body.token) return res.status(400).json({ message: 'Token missing' });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(req.body.token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      console.error('JWT verification failed in /api/upload-resume:', jwtError.message);
+      return res.status(401).json({ message: 'Token expired or invalid', error: jwtError.message });
+    }
+
     const user = await User.findOne({ email: decoded.email });
+    if (!user) return res.status(401).json({ message: 'Unauthorized: User not found' });
+
+    let result;
+    try {
+      result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { resource_type: 'raw' },
+          (error, result) => {
+            if (error) reject(new Error(`Cloudinary upload failed: ${error.message}`));
+            resolve(result);
+          }
+        ).end(req.file.buffer);
+      });
+    } catch (cloudinaryError) {
+      console.error('Cloudinary upload error:', cloudinaryError.message);
+      return res.status(500).json({ message: 'Failed to upload to Cloudinary', error: cloudinaryError.message });
+    }
+
     user.resumePaths.push(result.secure_url);
-    if (req.body.technology) user.technology = req.body.technology;
+    const extractedTech = await extractTechnologies(req.file.buffer);
+    if (req.body.technology) {
+      user.technology = req.body.technology;
+    } else if (extractedTech) {
+      user.technology = extractedTech;
+    }
     await user.save();
+
     const suggestions = scanResume(result.secure_url);
-    res.status(200).json({ message: 'Resume uploaded', path: result.secure_url, suggestions });
+    res.status(200).json({ 
+      message: 'Resume uploaded', 
+      path: result.secure_url, 
+      suggestions, 
+      technology: user.technology || null 
+    });
   } catch (error) {
-    console.error('Upload error:', error.message);
+    console.error('Upload resume error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Upload failed', error: error.message });
   }
 });
@@ -375,13 +398,20 @@ app.post('/api/upload-resume', upload, async (req, res) => {
 app.post('/api/select-companies', async (req, res) => {
   const { token, companies } = req.body;
   try {
-    if (!dbConnected) throw new Error('Database not connected');
+    if (!dbConnected) return res.status(503).json({ message: 'Service unavailable: Database not connected' });
     if (!token || !companies) return res.status(400).json({ message: 'Missing token or companies' });
     if (companies.length > 10) return res.status(400).json({ message: 'Maximum 10 companies allowed' });
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      console.error('JWT verification failed in /api/select-companies:', jwtError.message);
+      return res.status(401).json({ message: 'Token expired or invalid', error: jwtError.message });
+    }
+
     const user = await User.findOne({ email: decoded.email });
-    if (!user) return res.status(401).json({ message: 'Unauthorized' });
+    if (!user) return res.status(401).json({ message: 'Unauthorized: User not found' });
 
     user.selectedCompanies = companies;
     await user.save();
@@ -389,7 +419,7 @@ app.post('/api/select-companies', async (req, res) => {
     const jobs = await fetchRealTimeJobs(companies, user.technology);
     res.status(200).json({ message: 'Companies selected', jobs });
   } catch (error) {
-    console.error('Select companies error:', error.message);
+    console.error('Select companies error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Failed to select companies', error: error.message });
   }
 });
@@ -397,15 +427,22 @@ app.post('/api/select-companies', async (req, res) => {
 app.post('/api/update-profile', async (req, res) => {
   const { token, linkedinProfile, coverLetter } = req.body;
   try {
-    if (!dbConnected) throw new Error('Database not connected');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!dbConnected) return res.status(503).json({ message: 'Service unavailable: Database not connected' });
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      console.error('JWT verification failed in /api/update-profile:', jwtError.message);
+      return res.status(401).json({ message: 'Token expired or invalid', error: jwtError.message });
+    }
+
     const user = await User.findOne({ email: decoded.email });
     user.linkedinProfile = linkedinProfile || user.linkedinProfile;
     user.coverLetter = coverLetter || user.coverLetter;
     await user.save();
     res.status(200).json({ message: 'Profile updated' });
   } catch (error) {
-    console.error('Profile update error:', error.message);
+    console.error('Profile update error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Failed to update profile', error: error.message });
   }
 });
@@ -413,8 +450,15 @@ app.post('/api/update-profile', async (req, res) => {
 app.post('/api/auto-apply', async (req, res) => {
   const { token, linkedinProfile, coverLetter } = req.body;
   try {
-    if (!dbConnected) throw new Error('Database not connected');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!dbConnected) return res.status(503).json({ message: 'Service unavailable: Database not connected' });
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      console.error('JWT verification failed in /api/auto-apply:', jwtError.message);
+      return res.status(401).json({ message: 'Token expired or invalid', error: jwtError.message });
+    }
+
     const user = await User.findOne({ email: decoded.email });
     if (!user) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -446,7 +490,7 @@ app.post('/api/auto-apply', async (req, res) => {
         user.appliedJobs.push({ jobId: job.id, date: new Date() });
         appliedCount++;
       }
-      await delay(1000); // 1-second delay between applications to avoid overwhelming downstream systems
+      await delay(1000);
     }
     await user.save();
 
@@ -456,12 +500,11 @@ app.post('/api/auto-apply', async (req, res) => {
 
     res.status(200).json({ message: 'Auto-apply process completed', appliedToday: appliedToday + appliedCount });
   } catch (error) {
-    console.error('Auto-apply error:', error.message);
+    console.error('Auto-apply error:', { message: error.message, stack: error.stack });
     res.status(500).json({ message: 'Auto-apply failed', error: error.message });
   }
 });
 
-// Start server
 const port = process.env.PORT || 5002;
 app.listen(port, () => console.log(`Server running on port ${port}`))
   .on('error', (err) => console.error('Server startup failed:', err.message));

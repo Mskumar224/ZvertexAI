@@ -1,60 +1,82 @@
 import React, { useState } from 'react';
-import { Container, Typography, Button, TextField } from '@mui/material';
-import axios from 'axios';
+import { Button, Typography, Box, TextField } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const ResumeUpload: React.FC = () => {
-  const [file, setFile] = useState<File | null>(null);
-  const [technology, setTechnology] = useState('');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const navigate = useNavigate();
+  const [manualTech, setManualTech] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setFile(e.target.files[0]);
+  const handleUpload = () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf';
+    input.onchange = async (e: any) => {
+      const file = e.target.files[0];
+      if (file) {
+        const formData = new FormData();
+        formData.append('resume', file);
+        formData.append('token', token);
+        if (manualTech) formData.append('technology', manualTech);
+        try {
+          const response = await axios.post('https://zvertexai-orzv.onrender.com/api/upload-resume', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          localStorage.setItem('resumeUploaded', 'true');
+          if (!response.data.technology) {
+            setShowManualInput(true);
+          } else {
+            navigate('/companies');
+          }
+        } catch (err: any) {
+          alert(`Upload failed: ${err.response?.data?.message || 'Unknown error'}`);
+        }
+      }
+    };
+    input.click();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file) return alert('Please select a file');
-    if (!technology) return alert('Please specify your technology');
+  const handleManualSubmit = async () => {
+    const token = localStorage.getItem('token');
+    if (!token || !manualTech) return;
     const formData = new FormData();
-    formData.append('resume', file);
-    formData.append('token', localStorage.getItem('token') || '');
-    formData.append('technology', technology);
+    formData.append('token', token);
+    formData.append('technology', manualTech);
     try {
-      const res = await axios.post('https://zvertexai-orzv.onrender.com/api/upload-resume', formData, {
+      await axios.post('https://zvertexai-orzv.onrender.com/api/upload-resume', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setSuggestions(res.data.suggestions);
       navigate('/companies');
-    } catch (error: any) {
-      alert('Upload failed: ' + (error.response?.data?.message || error.message));
+    } catch (err: any) {
+      alert(`Failed to save technology: ${err.response?.data?.message || 'Unknown error'}`);
     }
   };
 
   return (
-    <Container className="glass-card" sx={{ mt: 5, py: 5 }}>
-      <Typography variant="h4" sx={{ mb: 3, fontWeight: 500 }}>Upload Resume</Typography>
-      <form onSubmit={handleSubmit}>
-        <input type="file" onChange={handleFileChange} style={{ marginBottom: '20px' }} />
-        <TextField
-          label="Which technology do you specialize in? (e.g., JavaScript, Python)"
-          value={technology}
-          onChange={(e) => setTechnology(e.target.value)}
-          fullWidth
-          margin="normal"
-          required
-        />
-        <Button type="submit" variant="contained" sx={{ mr: 2, px: 4, py: 1.5 }}>Upload</Button>
-        <Button variant="outlined" onClick={() => navigate(-1)} sx={{ px: 4, py: 1.5, borderColor: '#007bff', color: '#007bff' }}>Back</Button>
-      </form>
-      {suggestions.length > 0 && (
-        <div>
-          <Typography variant="h6" sx={{ mt: 2 }}>Suggestions:</Typography>
-          <ul>{suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}</ul>
-        </div>
+    <Box sx={{ maxWidth: 400, mx: 'auto', mt: 8, p: 3, textAlign: 'center' }}>
+      <Typography variant="h4" sx={{ mb: 3 }}>Upload Resume</Typography>
+      {!showManualInput ? (
+        <Button onClick={handleUpload} variant="contained">Upload Resume (PDF)</Button>
+      ) : (
+        <>
+          <Typography sx={{ mb: 2 }}>No technologies detected in your resume. Please enter them manually:</Typography>
+          <TextField
+            label="Technologies (e.g., JavaScript, Python)"
+            value={manualTech}
+            onChange={(e) => setManualTech(e.target.value)}
+            fullWidth
+            sx={{ mb: 2 }}
+          />
+          <Button onClick={handleManualSubmit} variant="contained">Save and Continue</Button>
+        </>
       )}
-    </Container>
+    </Box>
   );
 };
 
