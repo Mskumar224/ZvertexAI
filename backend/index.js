@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
-const pdfParse = require('pdf-parse'); // Added for PDF text extraction
+const pdfParse = require('pdf-parse');
 
 dotenv.config();
 
@@ -46,6 +46,7 @@ const allowedOrigins = [
   'https://67d1e078ce70580008045c8d--zvertexai.netlify.app',
   'https://67d1e69e2d47412a5001c924--zvertexai.netlify.app',
   'https://67d1e9046704b12e711ef0b1--zvertexai.netlify.app',
+  'https://67dee93e84153f00085d1754--zvertexai.netlify.app', // Added new Netlify URL
 ];
 app.use(cors({
   origin: (origin, callback) => {
