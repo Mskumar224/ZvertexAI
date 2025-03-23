@@ -1,8 +1,8 @@
 [build]
-  base = "frontend"
-  publish = "frontend/build"
+  base = "frontend"           # Build runs from the frontend/ directory
+  publish = "build"           # Output directory relative to base (frontend/build)
   command = "npm install && npm run build"
-  functions = "functions"
+  functions = "../functions"  # Functions directory relative to root
 
 [dev]
   command = "npm start"
