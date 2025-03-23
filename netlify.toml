@@ -2,9 +2,3 @@
   publish = "frontend/build"
   command = "npm install && cd frontend && npm install && npm run build"
   functions = "functions"
-
-[dev]
-  command = "npm start"
-  port = 3000
-  targetPort = 5000
-  functionsPort = 8888
