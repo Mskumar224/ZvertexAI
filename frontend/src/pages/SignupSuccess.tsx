@@ -7,21 +7,20 @@ const SignupSuccess: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/.netlify/functions/api' : 'http://localhost:5000/api';
+
   useEffect(() => {
     const completeSignup = async () => {
       const params = new URLSearchParams(location.search);
       const token = params.get('token');
       if (!token) {
-        console.error('No token found in URL');
         navigate('/signup');
         return;
       }
 
       try {
-        console.log('Completing signup with token:', token);
-        await axios.post('http://localhost:5000/api/signup-complete', { token });
-        console.log('Signup completed successfully');
-        navigate('/dashboard'); // Adjust to your app’s dashboard route
+        await axios.post(`${API_BASE_URL}/signup-complete`, { token });
+        navigate('/dashboard');
       } catch (error) {
         console.error('Signup completion error:', error);
         navigate('/signup');

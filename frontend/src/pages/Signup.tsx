@@ -4,10 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { loadStripe } from '@stripe/stripe-js';
 
-// Define the possible subscription keys
 type SubscriptionType = 'Student' | 'Vendor/Recruiter' | 'Business';
 
-// Define the structure of each plan
 interface SubscriptionPlan {
   price: number;
   priceId: string;
@@ -15,13 +13,13 @@ interface SubscriptionPlan {
 
 // Define the subscription plans with explicit typing
 const subscriptionPlans: Record<SubscriptionType, SubscriptionPlan> = {
-    'Student': { price: 39, priceId: 'price_1R5dNP2MVJL42o0CLvjkMHzz' }, // Replace with your actual Stripe Price ID
-    'Vendor/Recruiter': { price: 79, priceId: 'price_1R5dOA2MVJL42o0CzqZFoxrY' }, // Replace with your actual Stripe Price ID
-    'Business': { price: 149, priceId: 'price_1R5dOh2MVJL42o0CcxilmPBq' } // Replace with your actual Stripe Price ID
-  };
-  
-  const stripePromise = loadStripe('pk_test_51R0u7t2MVJL42o0CFAiu0ubCD41G0TdoaHp209InzDyqEwhhA8VEWACerz6oueeGHb4Dd1YppKuk4By8etJN3VnY00wM38IYbh'); // Replace with your actual Stripe publishable key
-  
+  'Student': { price: 39, priceId: 'price_1R5dNP2MVJL42o0CLvjkMHzz' }, // Replace with your actual Stripe Price ID
+  'Vendor/Recruiter': { price: 79, priceId: 'price_1R5dOA2MVJL42o0CzqZFoxrY' }, // Replace with your actual Stripe Price ID
+  'Business': { price: 149, priceId: 'price_1R5dOh2MVJL42o0CcxilmPBq' } // Replace with your actual Stripe Price ID
+};
+
+const stripePromise = loadStripe('pk_test_51R0u7t2MVJL42o0CFAiu0ubCD41G0TdoaHp209InzDyqEwhhA8VEWACerz6oueeGHb4Dd1YppKuk4By8etJN3VnY00wM38IYbh'); // Replace with your actual Stripe publishable key
+
 const Signup: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -31,6 +29,8 @@ const Signup: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/.netlify/functions/api' : 'http://localhost:5000/api';
+
   const handleSignup = async () => {
     if (!subscription) {
       setError('Please select a subscription plan');
@@ -38,37 +38,27 @@ const Signup: React.FC = () => {
     }
 
     setLoading(true);
-    setError(''); // Clear previous errors
+    setError('');
     try {
-      console.log('Starting signup with:', { email, password, subscription, phone });
-      const res = await axios.post('http://localhost:5000/api/signup-initial', { email, password, subscription, phone });
-      console.log('Signup-initial response:', res.data);
+      const res = await axios.post(`${API_BASE_URL}/signup-initial`, { email, password, subscription, phone });
       const token = res.data.token;
 
       const stripe = await stripePromise;
-      if (!stripe) throw new Error('Stripe failed to initialize - check publishable key in Signup.tsx');
-      console.log('Redirecting to Stripe checkout with token:', token);
+      if (!stripe) throw new Error('Stripe failed to initialize');
+
+      const baseUrl = process.env.NODE_ENV === 'production' ? window.location.origin : 'http://localhost:3000';
       const { error: stripeError } = await stripe.redirectToCheckout({
         lineItems: [{ price: subscriptionPlans[subscription].priceId, quantity: 1 }],
         mode: 'subscription',
-        successUrl: `${window.location.origin}/signup-success?token=${token}`,
-        cancelUrl: `${window.location.origin}/signup`,
+        successUrl: `${baseUrl}/signup-success?token=${token}`,
+        cancelUrl: `${baseUrl}/signup`,
         customerEmail: email,
       });
 
-      if (stripeError) {
-        console.error('Stripe checkout error:', stripeError.message);
-        throw new Error(stripeError.message);
-      }
+      if (stripeError) throw new Error(stripeError.message);
     } catch (error: any) {
       console.error('Signup error:', error);
-      if (error.response?.status === 409) {
-        setError('This email is already registered with a paid subscription. Please use a different email or log in.');
-      } else if (error.message.includes('No such plan')) {
-        setError('Invalid subscription plan ID. Please contact support to verify Stripe configuration.');
-      } else {
-        setError(error.response?.data?.message || error.message || 'Signup failed - check server logs');
-      }
+      setError(error.response?.data?.message || error.message || 'Signup failed');
       setLoading(false);
     }
   };
