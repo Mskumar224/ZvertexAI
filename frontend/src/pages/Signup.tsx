@@ -5,12 +5,7 @@ import axios from 'axios';
 import { loadStripe } from '@stripe/stripe-js';
 
 type SubscriptionType = 'Student' | 'Vendor/Recruiter' | 'Business';
-
-interface SubscriptionPlan {
-  price: number;
-  priceId: string;
-}
-
+interface SubscriptionPlan { price: number; priceId: string }
 // Define the subscription plans with explicit typing
 const subscriptionPlans: Record<SubscriptionType, SubscriptionPlan> = {
   'Student': { price: 39, priceId: 'price_1R5dNP2MVJL42o0CLvjkMHzz' }, // Replace with your actual Stripe Price ID
@@ -20,6 +15,8 @@ const subscriptionPlans: Record<SubscriptionType, SubscriptionPlan> = {
 
 const stripePromise = loadStripe('pk_test_51R0u7t2MVJL42o0CFAiu0ubCD41G0TdoaHp209InzDyqEwhhA8VEWACerz6oueeGHb4Dd1YppKuk4By8etJN3VnY00wM38IYbh'); // Replace with your actual Stripe publishable key
 
+const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/.netlify/functions' : 'http://localhost:5000/api';
+
 const Signup: React.FC = () => {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -28,8 +25,6 @@ const Signup: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/.netlify/functions/api' : 'http://localhost:5000/api';
 
   const handleSignup = async () => {
     if (!subscription) {
@@ -45,19 +40,16 @@ const Signup: React.FC = () => {
 
       const stripe = await stripePromise;
       if (!stripe) throw new Error('Stripe failed to initialize');
-
-      const baseUrl = process.env.NODE_ENV === 'production' ? window.location.origin : 'http://localhost:3000';
       const { error: stripeError } = await stripe.redirectToCheckout({
         lineItems: [{ price: subscriptionPlans[subscription].priceId, quantity: 1 }],
         mode: 'subscription',
-        successUrl: `${baseUrl}/signup-success?token=${token}`,
-        cancelUrl: `${baseUrl}/signup`,
+        successUrl: `${window.location.origin}/signup-success?token=${token}`,
+        cancelUrl: `${window.location.origin}/signup`,
         customerEmail: email,
       });
 
       if (stripeError) throw new Error(stripeError.message);
     } catch (error: any) {
-      console.error('Signup error:', error);
       setError(error.response?.data?.message || error.message || 'Signup failed');
       setLoading(false);
     }

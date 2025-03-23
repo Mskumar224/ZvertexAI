@@ -3,11 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Typography, Box, CircularProgress } from '@mui/material';
 
+const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/.netlify/functions' : 'http://localhost:5000/api';
+
 const SignupSuccess: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-
-  const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/.netlify/functions/api' : 'http://localhost:5000/api';
 
   useEffect(() => {
     const completeSignup = async () => {

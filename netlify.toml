@@ -1,4 +1,8 @@
 [build]
-  publish = "frontend/build"
-  command = "npm install && cd frontend && npm install && npm run build"
-  functions = "functions"
+  base = "frontend"
+  publish = "build"
+  command = "npm install && npm run build"
+  functions = "backend/functions"
+
+[functions]
+  node_bundler = "esbuild"
